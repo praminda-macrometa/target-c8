@@ -18,9 +18,10 @@ setup(
     py_modules=['target_c8'],
     install_requires=[
         'jsonschema==2.6.0',
-        'singer-python==5.8.0',
-        'adjust-precision-for-schema==0.3.3',
+        'singer-python==5.12.2',
+        'adjust-precision-for-schema==0.3.4',
         'pyC8==0.17.1'
+
     ],
     entry_points='''
           [console_scripts]

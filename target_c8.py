@@ -90,6 +90,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-r', '--region', help='Region ex: foo-eu-west.eng.macrometa.io')
     parser.add_argument('-t', '--tenant', help='Tenant ex: foo-eu-west.eng.macrometa.io')
+    parser.add_argument('-c', '--config', help='Config file')
     args = parser.parse_args()
     
     if args.region:
