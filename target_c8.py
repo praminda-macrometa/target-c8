@@ -12,7 +12,6 @@ from jsonschema import Draft4Validator
 from adjust_precision_for_schema import adjust_decimal_precision_for_schema
 
 logger = singer.get_logger()
-fabric = "_system"
 
 def emit_state(state):
     if state is not None:
@@ -21,9 +20,7 @@ def emit_state(state):
         sys.stdout.write("{}\n".format(line))
         sys.stdout.flush()
 
-def persist_messages(
-    messages
-):
+def persist_messages(messages):
     state = None
     schemas = {}
     key_properties = {}
@@ -40,31 +37,32 @@ def persist_messages(
             logger.error("Unable to parse:\n{}".format(message))
             raise
 
+        stream = o['stream']
         message_type = o['type']
         if message_type == 'RECORD':
-            if o['stream'] not in schemas:
+            if stream not in schemas:
                 raise Exception(
                     "A record for stream {}"
-                    "was encountered before a corresponding schema".format(o['stream'])
+                    "was encountered before a corresponding schema".format(stream)
                 )
 
             try: 
-                validators[o['stream']].validate((o['record']))
+                validators[stream].validate((o['record']))
             except jsonschema.ValidationError as e:
-                logger.error(f"Failed parsing the json schema for stream: {o['stream']}.")
+                logger.error(f"Failed parsing the json schema for stream: {stream}.")
                 raise e
 
-            collname = o['stream']
-            if collname not in collections:
-                client.create_collection(name=collname)
-                collections.append(collname)
+            if stream not in collections:
+                client.create_collection(name=stream)
+                collections.append(stream)
 
             # Get Collecion Handle and Insert
-            coll = client.get_collection(collname)
+            coll = client.get_collection(stream)
             print('Writing a record')
             try:
                 coll.insert(o['record'])
             except TypeError as e:
+                # TODO: This is temporary until json serializing issue for Decimals are fixed in pyC8
                 logger.debug("pyC8 error occurred")
 
             state = None
@@ -72,7 +70,6 @@ def persist_messages(
             logger.debug('Setting state to {}'.format(o['value']))
             state = o['value']
         elif message_type == 'SCHEMA':
-            stream = o['stream']
             schemas[stream] = o['schema']
             adjust_decimal_precision_for_schema(schemas[stream])
             validators[stream] = Draft4Validator((o['schema']))
@@ -85,29 +82,34 @@ def persist_messages(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-r', '--region', help='Region ex: foo-eu-west.eng.macrometa.io')
-    parser.add_argument('-t', '--tenant', help='Tenant ex: foo-eu-west.eng.macrometa.io')
     parser.add_argument('-c', '--config', help='Config file')
     args = parser.parse_args()
-    
-    if args.region:
-        region = args.region
-    else:
-        region = "praminda-ap-west.eng.macrometa.io"
 
-    if args.tenant:
-        tenant = args.tenant
+    if args.config:
+        with open(args.config) as input_json:
+            config = json.load(input_json)
     else:
-        tenant = "demo@macrometa.io"
+        raise Exception(
+            "Required '--config' parameter was not provided"
+        )
+    region = config['c8_region']
+    tenant = config['c8_tenant']
+    fabric = config['c8_fabric']
+    password = config['c8_password']
 
-    print("Create C8Client Connection...")
+    print("Create C8Client Connection")
     global client
-    client = C8Client(protocol='https', host=region, port=443, email=tenant, password='demo', geofabric=fabric)
+    client = C8Client(
+        protocol='https',
+        host=region,
+        port=443,
+        email=tenant,
+        password=password,
+        geofabric=fabric
+    )
 
     input_messages = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
-    state = persist_messages(
-        input_messages
-    )
+    state = persist_messages(input_messages)
 
     emit_state(state)
     logger.debug("Exiting normally")
