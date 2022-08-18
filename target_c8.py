@@ -68,7 +68,10 @@ def persist_messages(
             # Get Collecion Handle and Insert
             coll = client.get_collection(collname)
             print('Writing a record')
-            coll.insert(o['record'])
+            try:
+                coll.insert(o['record'])
+            except TypeError as e:
+                logger.debug("pyC8 error occurred")
 
             state = None
         elif message_type == 'STATE':
