@@ -8,12 +8,16 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from c8 import C8Client
 
 import singer
 from jsonschema import Draft4Validator, FormatChecker
 from adjust_precision_for_schema import adjust_decimal_precision_for_schema
 
 logger = singer.get_logger()
+
+fabric = "_system"
+collname = "employees"
 
 
 def emit_state(state):
@@ -26,19 +30,22 @@ def emit_state(state):
 
 
 def persist_messages(
-    messages,
-    destination_path,
-    custom_name=None,
-    do_timestamp_file=True
+    messages
 ):
     state = None
     schemas = {}
     key_properties = {}
     validators = {}
 
-    timestamp_file_part = '-' + datetime.now().strftime('%Y%m%dT%H%M%S') if do_timestamp_file else ''
+    if client.has_collection(collname):
+        print("Collection exists")
+    else:
+        client.create_collection(name=collname)
+        print("Collection created")
+
 
     for message in messages:
+        print("Processing msg: " + message)
         try:
             o = singer.parse_message(message).asdict()
         except json.decoder.JSONDecodeError:
@@ -57,14 +64,19 @@ def persist_messages(
             except jsonschema.ValidationError as e:
                 logger.error(f"Failed parsing the json schema for stream: {o['stream']}.")
                 raise e
+            
+            # Get Collecion Handle and Insert
+            coll = client.get_collection(collname)
+            print('Writing record: ')
+            coll.insert(o['record'])
+            
+            # filename = (custom_name or o['stream']) + timestamp_file_part + '.jsonl'
+            # if destination_path:
+            #     Path(destination_path).mkdir(parents=True, exist_ok=True)
+            # filename = os.path.expanduser(os.path.join(destination_path, filename))
 
-            filename = (custom_name or o['stream']) + timestamp_file_part + '.jsonl'
-            if destination_path:
-                Path(destination_path).mkdir(parents=True, exist_ok=True)
-            filename = os.path.expanduser(os.path.join(destination_path, filename))
-
-            with open(filename, 'a', encoding='utf-8') as json_file:
-                json_file.write(json.dumps(o['record']) + '\n')
+            # with open(filename, 'a', encoding='utf-8') as json_file:
+            #     json_file.write(json.dumps(o['record']) + '\n')
 
             state = None
         elif message_type == 'STATE':
@@ -84,21 +96,29 @@ def persist_messages(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', help='Config file')
+    parser.add_argument('-r', '--region', help='Region ex: foo-eu-west.eng.macrometa.io')
+    parser.add_argument('-t', '--tenant', help='Tenant ex: foo-eu-west.eng.macrometa.io')
     args = parser.parse_args()
-
-    if args.config:
-        with open(args.config) as input_json:
-            config = json.load(input_json)
+    
+    if args.region:
+        region = args.region
     else:
-        config = {}
+        region = "praminda-ap-west.eng.macrometa.io"
+
+    if args.tenant:
+        tenant = args.tenant
+    else:
+        tenant = "demo@macrometa.io"
+
+    print("Create C8Client Connection...")
+    global client
+    client = C8Client(protocol='https', host=region, port=443,
+                        email=tenant, password='demo',
+                        geofabric=fabric)
 
     input_messages = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
     state = persist_messages(
-        input_messages,
-        config.get('destination_path', ''),
-        config.get('custom_name', ''),
-        config.get('do_timestamp_file', True)
+        input_messages
     )
 
     emit_state(state)
