@@ -67,16 +67,8 @@ def persist_messages(
             
             # Get Collecion Handle and Insert
             coll = client.get_collection(collname)
-            print('Writing record: ')
+            print('Writing record: ', o['record']['timestamp'], ' in c8')
             coll.insert(o['record'])
-            
-            # filename = (custom_name or o['stream']) + timestamp_file_part + '.jsonl'
-            # if destination_path:
-            #     Path(destination_path).mkdir(parents=True, exist_ok=True)
-            # filename = os.path.expanduser(os.path.join(destination_path, filename))
-
-            # with open(filename, 'a', encoding='utf-8') as json_file:
-            #     json_file.write(json.dumps(o['record']) + '\n')
 
             state = None
         elif message_type == 'STATE':
@@ -112,9 +104,7 @@ def main():
 
     print("Create C8Client Connection...")
     global client
-    client = C8Client(protocol='https', host=region, port=443,
-                        email=tenant, password='demo',
-                        geofabric=fabric)
+    client = C8Client(protocol='https', host=region, port=443, email=tenant, password='demo', geofabric=fabric)
 
     input_messages = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
     state = persist_messages(
