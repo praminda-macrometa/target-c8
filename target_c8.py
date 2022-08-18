@@ -4,21 +4,15 @@ import argparse
 import io
 import jsonschema
 import simplejson as json
-import os
 import sys
-from datetime import datetime
-from pathlib import Path
 from c8 import C8Client
 
 import singer
-from jsonschema import Draft4Validator, FormatChecker
+from jsonschema import Draft4Validator
 from adjust_precision_for_schema import adjust_decimal_precision_for_schema
 
 logger = singer.get_logger()
-
 fabric = "_system"
-collname = "employees"
-
 
 def emit_state(state):
     if state is not None:
@@ -27,8 +21,6 @@ def emit_state(state):
         sys.stdout.write("{}\n".format(line))
         sys.stdout.flush()
 
-
-
 def persist_messages(
     messages
 ):
@@ -36,21 +28,18 @@ def persist_messages(
     schemas = {}
     key_properties = {}
     validators = {}
+    collections = []
 
-    if client.has_collection(collname):
-        print("Collection exists")
-    else:
-        client.create_collection(name=collname)
-        print("Collection created")
-
+    for c in client.get_collections():
+        collections.append(c['name'])
 
     for message in messages:
-        print("Processing msg: " + message)
         try:
             o = singer.parse_message(message).asdict()
         except json.decoder.JSONDecodeError:
             logger.error("Unable to parse:\n{}".format(message))
             raise
+
         message_type = o['type']
         if message_type == 'RECORD':
             if o['stream'] not in schemas:
@@ -64,7 +53,12 @@ def persist_messages(
             except jsonschema.ValidationError as e:
                 logger.error(f"Failed parsing the json schema for stream: {o['stream']}.")
                 raise e
-            
+
+            collname = o['stream']
+            if collname not in collections:
+                client.create_collection(name=collname)
+                collections.append(collname)
+
             # Get Collecion Handle and Insert
             coll = client.get_collection(collname)
             print('Writing a record')
