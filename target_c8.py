@@ -67,7 +67,7 @@ def persist_messages(
             
             # Get Collecion Handle and Insert
             coll = client.get_collection(collname)
-            print('Writing record: ', o['record']['timestamp'], ' in c8')
+            print('Writing a record')
             coll.insert(o['record'])
 
             state = None
