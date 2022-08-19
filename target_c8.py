@@ -20,15 +20,20 @@ def emit_state(state):
         sys.stdout.write("{}\n".format(line))
         sys.stdout.flush()
 
-def persist_messages(messages):
+def persist_messages(messages, target):
     state = None
     schemas = {}
     key_properties = {}
     validators = {}
     collections = []
 
-    for c in client.get_collections():
-        collections.append(c['name'])
+    if target != None and target:
+        if not client.has_collection(target):
+            client.create_collection(name=target)
+    else:
+        for c in client.get_collections():
+            if not c['system']:
+                collections.append(c['name'])
 
     for message in messages:
         try:
@@ -37,9 +42,9 @@ def persist_messages(messages):
             logger.error("Unable to parse:\n{}".format(message))
             raise
 
-        stream = o['stream']
         message_type = o['type']
         if message_type == 'RECORD':
+            stream = o['stream']
             if stream not in schemas:
                 raise Exception(
                     "A record for stream {}"
@@ -52,13 +57,16 @@ def persist_messages(messages):
                 logger.error(f"Failed parsing the json schema for stream: {stream}.")
                 raise e
 
-            if stream not in collections:
-                client.create_collection(name=stream)
-                collections.append(stream)
+            if target == None or not target:
+                if stream not in collections:
+                    client.create_collection(name=stream)
+                    collections.append(stream)
+                    # Get Collecion Handle and Insert
+                    coll = client.get_collection(stream)
+            else:
+                coll = client.get_collection(target)
 
-            # Get Collecion Handle and Insert
-            coll = client.get_collection(stream)
-            print('Writing a record')
+            logger.info('Writing a record')
             try:
                 coll.insert(o['record'])
             except TypeError as e:
@@ -70,6 +78,7 @@ def persist_messages(messages):
             logger.debug('Setting state to {}'.format(o['value']))
             state = o['value']
         elif message_type == 'SCHEMA':
+            stream = o['stream']
             schemas[stream] = o['schema']
             adjust_decimal_precision_for_schema(schemas[stream])
             validators[stream] = Draft4Validator((o['schema']))
@@ -92,10 +101,11 @@ def main():
         raise Exception(
             "Required '--config' parameter was not provided"
         )
-    region = config['c8_region']
-    tenant = config['c8_tenant']
-    fabric = config['c8_fabric']
-    password = config['c8_password']
+    region = config['region']
+    tenant = config['tenant']
+    fabric = config['fabric']
+    password = config['password']
+    target_collection = config['target_collection']
 
     print("Create C8Client Connection")
     global client
@@ -109,7 +119,7 @@ def main():
     )
 
     input_messages = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
-    state = persist_messages(input_messages)
+    state = persist_messages(input_messages, target_collection)
 
     emit_state(state)
     logger.debug("Exiting normally")
